@@ -31,6 +31,54 @@
         @media (max-width: 360px) {
             h1 { font-size: 1.4rem !important; line-height: 1.3; }
         }
+        /* Chip dinámico de versión */
+        .version-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-top: 0.75rem;
+            padding: 0.3rem 0.85rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #9a3412;
+            background-color: #fff7ed;
+            border: 1px solid #fed7aa;
+            border-radius: 9999px;
+            line-height: 1;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .version-chip::before {
+            content: '';
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 9999px;
+            background-color: #f97316;
+            display: inline-block;
+        }
+        .version-chip.is-loading {
+            color: #9ca3af;
+            background-color: #f3f4f6;
+            border-color: #e5e7eb;
+        }
+        .version-chip.is-loading::before {
+            background-color: #d1d5db;
+            animation: chip-pulse 1.2s ease-in-out infinite;
+        }
+        .version-chip.is-error {
+            color: #991b1b;
+            background-color: #fef2f2;
+            border-color: #fecaca;
+        }
+        .version-chip.is-error::before {
+            background-color: #ef4444;
+        }
+        @keyframes chip-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .version-chip.is-loading::before { animation: none; }
+        }
     </style>
 </head>
 <body class="antialiased">
@@ -43,6 +91,9 @@
             <!-- Título centrado -->
             <div class="text-center flex-1 px-2">
                 <h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-800 leading-tight">Evaluación Inicial de las Competencias Específicas de la materia de Tecnología de 4º de ESO</h1>
+                <span id="app-version-chip" class="version-chip is-loading" role="status" aria-live="polite" aria-label="Versión de la aplicación">
+                    <span id="app-version-text">Cargando versión…</span>
+                </span>
                 <p class="mt-3 text-lg sm:text-xl md:text-2xl text-gray-600">Departamento de Tecnología<br>IES Virgen de Villadiego</p>
             </div>
 
@@ -98,6 +149,69 @@
             </div>
         </main>
     </div>
+
+    <script>
+        (function () {
+            const chip = document.getElementById('app-version-chip');
+            const text = document.getElementById('app-version-text');
+            if (!chip || !text) return;
+
+            /**
+             * Intenta varias rutas relativas para localizar el service worker,
+             * compatible tanto con despliegues en raíz como en subcarpetas
+             * (por ejemplo /TEC4EvalInic/).
+             */
+            const candidatePaths = [
+                'service-worker.js',
+                './service-worker.js',
+                '/TEC4EvalInic/service-worker.js',
+                '../service-worker.js'
+            ];
+
+            async function fetchServiceWorkerSource() {
+                let lastError = null;
+                for (const path of candidatePaths) {
+                    try {
+                        const res = await fetch(path, { cache: 'no-store' });
+                        if (!res.ok) { lastError = new Error('HTTP ' + res.status); continue; }
+                        return await res.text();
+                    } catch (err) {
+                        lastError = err;
+                    }
+                }
+                throw lastError || new Error('No se pudo obtener service-worker.js');
+            }
+
+            function extractVersion(source) {
+                // Coincide con: CACHE_NAME = 'evalinictec4-v2.1'  ->  v2.1
+                const match = source.match(/CACHE_NAME\s*=\s*['"][^'"]*?-(v?[\d]+(?:\.[\d]+)*)['"]/i);
+                if (!match) return null;
+                let version = match[1];
+                if (!/^v/i.test(version)) version = 'v' + version;
+                return version;
+            }
+
+            function setVersion(version) {
+                text.textContent = 'Versión ' + version;
+                chip.classList.remove('is-loading', 'is-error');
+                chip.setAttribute('aria-label', 'Versión ' + version);
+            }
+
+            function setError() {
+                text.textContent = 'Versión no disponible';
+                chip.classList.remove('is-loading');
+                chip.classList.add('is-error');
+                chip.setAttribute('aria-label', 'Versión no disponible');
+            }
+
+            fetchServiceWorkerSource()
+                .then(source => {
+                    const version = extractVersion(source);
+                    if (version) setVersion(version); else setError();
+                })
+                .catch(setError);
+        })();
+    </script>
 
 </body>
 </html>
